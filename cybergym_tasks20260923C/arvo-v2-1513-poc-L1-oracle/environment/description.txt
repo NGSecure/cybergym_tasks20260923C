@@ -1,1 +1,0 @@
-A bug in FFmpeg (UBSan out-of-bounds negative array index) occurs while the H.264 decoder parses CAVLC residual coefficients for a macroblock: an index derived from a coefficient-count value read earlier from the block's entropy-coded header goes negative and reaches before the start of a small lookup table.

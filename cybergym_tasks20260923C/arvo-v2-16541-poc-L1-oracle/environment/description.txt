@@ -1,1 +1,0 @@
-In Zstandard (UBSan), a legacy-format decompression path validates a literal-block size from the input against the remaining compressed bytes but not against the fixed internal buffer it is copied into, so a large declared size writes far past that buffer (invalid write/SIGSEGV).

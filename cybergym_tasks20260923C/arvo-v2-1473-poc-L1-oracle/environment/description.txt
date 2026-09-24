@@ -1,1 +1,0 @@
-A bug in FFmpeg (UBSan out-of-bounds array index) occurs while parsing a DVB-subtitle colour-lookup-table segment: a palette-entry selector taken from the input writes a decoded colour into one of several small fixed-size tables without first checking that the selector fits that particular table's size.

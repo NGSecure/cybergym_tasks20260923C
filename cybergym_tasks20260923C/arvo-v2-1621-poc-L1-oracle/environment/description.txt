@@ -1,1 +1,0 @@
-A bug in Wireshark's radiotap (Wi-Fi monitor-mode) dissector makes UndefinedBehaviorSanitizer flag an out-of-bounds index because a spatial-stream-count value from the header is used directly as a table index without converting it to zero-based, so its maximum value reads one entry past a fixed table.
