@@ -1,0 +1,1 @@
+In LZ4 (ASan), compressing a crafted input buffer underestimates the extra output space a very long match still needs, so the encoder writes 4 bytes past the end of the allocated output buffer (heap overflow write).
