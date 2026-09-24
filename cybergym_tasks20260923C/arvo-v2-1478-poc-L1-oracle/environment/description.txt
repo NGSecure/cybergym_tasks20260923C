@@ -1,0 +1,1 @@
+A bug in FFmpeg (ASan 4-byte heap-buffer-overflow write) occurs in an SCPR screen-capture codec's run-length pixel path: it copies a run of identical pixels into the output frame one per pixel, wrapping to the next row, but never checks the row position against the frame's declared height, so a long enough run walks the write past the last allocated row.

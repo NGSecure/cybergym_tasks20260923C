@@ -1,0 +1,1 @@
+A bug in GDAL (ASan heap-buffer-overflow read) occurs while parsing a WKB collection geometry containing nested sub-geometries: the parser advances its input position by an amount that does not always equal the bytes it actually consumed for a sub-geometry, so the bookkeeping drifts and a later read of the next sub-geometry's type tag runs past the end of the input buffer.

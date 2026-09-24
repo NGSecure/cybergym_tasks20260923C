@@ -1,0 +1,1 @@
+A bug in GDAL (ASan memcpy-param-overlap) occurs while its KML vector reader walks the parsed document tree and updates its list of open layers: removing one entry and shifting the rest down a slot is done with a copy primitive whose source and destination ranges overlap, which a particular nesting of folder/placemark elements triggers.

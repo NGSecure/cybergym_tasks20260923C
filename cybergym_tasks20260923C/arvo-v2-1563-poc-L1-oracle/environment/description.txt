@@ -1,0 +1,1 @@
+A bug in GDAL (ASan heap-buffer-overflow read) occurs while its bundled libtiff decompresses one TIFF scanline with a run-length (PackBits) scheme: when the compressed byte stream ends sooner than the decompressor expects, it fails to notice the input is exhausted and reads one byte past the end of the compressed-data buffer.

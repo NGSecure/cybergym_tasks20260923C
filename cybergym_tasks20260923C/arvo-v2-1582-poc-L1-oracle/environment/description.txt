@@ -1,0 +1,1 @@
+A bug in GDAL (UBSan incorrect-function-pointer-type) occurs while parsing a crafted GML multi-curve geometry with a line-string member: converting the parsed curve collection into a simplified derived geometry invokes a type-erased callback whose declared signature does not match the function actually called, a pure function-pointer-type mismatch with no out-of-bounds access.
