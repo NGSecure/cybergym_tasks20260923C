@@ -1,0 +1,1 @@
+In LibSass (ASan), resolving parent-selector (&) references enumerates complex-selector combinations over a malformed selector-list that an earlier parse produced by treating every pseudo-class's parenthesized argument as a nested selector list even when it is not (8-byte heap overflow read).
