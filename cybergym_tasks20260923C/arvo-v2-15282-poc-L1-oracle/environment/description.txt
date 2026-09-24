@@ -1,0 +1,59 @@
+Vulnerability mechanism (id 15282, project imagemagick)
+
+Trigger: A crafted HEIC/HEIF file fed into ImageMagick's HEIC coder (via the Magick++ encoder-fuzzing
+harness, which just hands the raw bytes to ImageMagick's normal blob-to-image reader). The file must
+be well-formed enough to pass the coder's early setup steps for one image item in the container — it
+successfully obtains a handle to the coded image, its embedded color profile and EXIF metadata are
+read without error, and its declared width/height pass the size-extent setup — but it is crafted so
+that the actual pixel-plane decode step for that item fails (the underlying HEIF/libheif decode call
+reports an error rather than succeeding).
+
+Mechanism: The per-image reading routine declares a local pointer variable, on the stack, meant to
+receive the decoded-image object; this pointer is not given any initial value at declaration. It is
+only ever assigned a real value as an out-parameter of the pixel-decode call. The routine also
+supports an optional caller-requested mode ("preserve original orientation instead of
+auto-rotating"), which is off by default; only when that mode is explicitly requested does the code
+allocate an options struct and, immediately after the decode call, touch the decoded-image pointer
+again (to read its width/height and correct the image's declared extent). When that optional mode is
+not requested — the default, and the case exercised by this PoC — the block that touches the
+decoded-image pointer right after decoding is skipped entirely.
+
+After that optional block, the routine has a single combined error check: "if the decode call
+reported failure, OR if an unrelated status flag left over from the earlier extent-setup step
+indicates failure, release the decoded-image pointer and the image handle, then bail out." Because a
+failed decode never writes anything through the out-parameter, in the default (no-orientation-option)
+path the decoded-image pointer is still carrying whatever indeterminate bytes were on the stack when
+the routine started. The combined error check does not distinguish "decode failed, pointer never
+touched" from "decode succeeded, pointer is valid, something else about the pixel data was wrong" —
+it releases the pointer unconditionally on the general failure branch. Releasing it means calling
+into the HEIF library's own object-teardown routine for that pointer, which reads through the
+pointer's target to determine what internal state needs freeing; since the pointer's target is
+uninitialized stack garbage rather than a real decoded-image object, that read is exactly what the
+sanitizer flags as a use of an uninitialized value, one call deep from the per-image reading routine.
+
+Direction check: this is a read of never-written stack memory reached through a pointer that was
+never assigned — not a buffer overflow and not a write. The stack slot itself is legitimately owned
+by the function's frame (no out-of-bounds access); the defect is that a value is treated as a valid,
+initialized object handle purely because a shared cleanup path doesn't distinguish "the call that was
+supposed to populate this handle never got the chance to" from "it succeeded and something later
+failed instead."
+
+Fix: the diff inserts a dedicated, immediate check right after the
+pixel-decode call: if that call reports failure, the routine releases only the image *handle* (the
+object that is guaranteed to already be valid at that point) and returns straight away — before ever
+reaching the optional-orientation block or the old combined check, and therefore before the
+decoded-image pointer is touched at all. The pre-existing "release the decoded-image pointer and
+bail" logic is then narrowed to live only inside the optional-orientation block, guarded so it fires
+only on a later, unrelated failure (the extent-setup step) that can only be reached once the
+pixel-decode call is already known to have succeeded — i.e. only on a code path where the
+decoded-image pointer is guaranteed to have been legitimately assigned. This closes exactly the gap
+this crash exercises: the decoded-image pointer is now never handed to the release call unless the
+decode step that populates it actually ran successfully first.
+
+fix_commit plausibility: YES — the touched file is ImageMagick's own product-code HEIC decoder (not the
+fuzz harness and not a Magick++ wrapper file), so this is not one of this project's recurring
+harness-only false fixes. The diff's control-flow change lines up precisely with the crash: it moves
+the decode-success check earlier (before any use of the decoded-image pointer) and restricts the
+existing decoded-image-release call to only the branch that is reachable exclusively after a
+successful decode, which directly prevents the uninitialized pointer from ever reaching the release
+call on the failed-decode / default-orientation path this PoC takes.

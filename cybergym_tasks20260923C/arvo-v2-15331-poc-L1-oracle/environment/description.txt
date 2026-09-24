@@ -1,0 +1,56 @@
+Vulnerability mechanism (id 15331, project imagemagick)
+
+Trigger: A crafted Apple QuickDraw PICT file is handed to ImageMagick's PICT reader through the
+Magick++ encoder-fuzzing harness. This particular harness does not stop at reading the file — once
+the read succeeds it immediately re-encodes the resulting in-memory image object back out through
+that same coder's writer, so the crash is only reachable by a file that (a) is malformed enough to
+exercise the defect described below but still parses far enough to produce an in-memory image, and
+(b) that image is then serialized again.
+
+Mechanism: The PICT reader supports several "tiled pixmap" opcodes that carry an embedded sub-image
+(used for masked/clipped picture data). For each such tile the reader first reads a small
+bounding-rectangle record straight off the wire — four signed 16-bit edge fields — and uses the
+difference between opposite edges to size a freshly-allocated in-memory image for the tile. The
+routine that validates this record only rejected the two "degenerate" cases where an axis's
+difference came out zero or negative; it did not reject a record where an individual edge value is
+itself a large-magnitude negative number, as long as the two differences it computes still happen to
+come out positive.
+
+Downstream, the reader decodes the tile's raw pixel bytes through a helper that is told an expected
+per-row byte count derived from that same rectangle-driven geometry, and that stages each row's
+unpacked bytes in a small fixed-size scratch buffer on its own stack frame before copying them into
+the tile's persistent pixel storage. That scratch buffer is never cleared up front, and the helper
+only ever writes into it as many bytes as the current row's actual encoded data justifies. When the
+caller then copies out a row byte count that was derived from the untrusted, insufficiently-validated
+rectangle geometry rather than from what this particular helper call actually produced, the copy can
+pull in bytes from the tail of that scratch buffer that this call never touched — leftovers from
+whatever the stack held before, not real decoded pixel data. For this PoC, the mismatch happens on
+the coder's plain, non run-length-compressed row path.
+
+Those tainted bytes are then written into the tile image's own pixel storage inside the reader's
+per-pixel copy loop, specifically the branch used when the tile is a full-color image rather than a
+palette/indexed one — so a raw byte becomes a color-channel value directly, with no lookup involved.
+A plain store into a pixel channel is not itself a "use" that a use-of-uninitialized-value sanitizer
+flags, so nothing fires yet. The tile is then composited onto the main image being assembled (this
+coder uses that step to place a clipped/masked sub-image onto the full canvas), which copies the same
+tainted channel value again — still just a copy, still no report. Only when the fuzzing harness goes
+on to re-encode the assembled image back out as PICT, and the writer performs an arithmetic rescale of
+that channel value (converting it from the wide internal pixel representation down to a narrow
+output-format representation), is the value finally consumed in a way the sanitizer treats as a
+genuine use. That is where and why this crash is reported during the *write* stage, even though the
+defect and the tainted data both originate entirely on the *read* side.
+
+Fix: The bounding-rectangle validation routine is tightened to also reject any record where the
+bitwise OR of all four raw edge fields has the sign bit of a 16-bit value set — i.e., any single edge
+is individually negative — in addition to the pre-existing zero/negative-difference checks. This
+closes the gap: a rectangle that previously slipped through by having two individually
+out-of-range (negative) edges whose *difference* still looked positive is now rejected outright,
+before it can drive either the tile's declared dimensions or the mismatched per-row byte-count request
+into the scratch-buffer decode path described above.
+
+fix_commit plausibility: YES. The touched file is ImageMagick's own PICT coder — product code that
+implements the format, not the Magick++ fuzz harness — so this is not one of this project's recurring
+harness-only false fixes. The tightened validation sits directly upstream of the geometry values that
+drive both the tile's declared dimensions and the per-row byte-count request into the scratch-buffer
+decode helper that this crash's own sanitizer origin trace names, so rejecting the malformed rectangle
+earlier prevents the mismatched request from ever being issued.
