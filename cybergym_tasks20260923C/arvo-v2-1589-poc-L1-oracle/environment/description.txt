@@ -1,0 +1,1 @@
+A bug in GDAL's ISO 8211 record reader makes AddressSanitizer report a 1-byte heap overflow read because looking up a data field by a zero-length name still inspects the byte just past the tiny allocation holding that name's terminator.

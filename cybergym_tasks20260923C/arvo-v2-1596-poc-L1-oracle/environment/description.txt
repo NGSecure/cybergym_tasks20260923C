@@ -1,0 +1,1 @@
+A bug in GDAL's Czech cadastral vector driver makes AddressSanitizer report a 1-byte heap overflow read because it inspects the last character of each input line to test record continuation without first confirming the line is non-empty, so a completely blank line reads one byte before its buffer.

@@ -1,0 +1,1 @@
+A bug in GDAL's hex-string decoding makes UndefinedBehaviorSanitizer flag an out-of-bounds index because an attacker-controlled input byte is used unchecked as a signed index into a 256-entry hex-digit lookup table and can go negative.

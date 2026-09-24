@@ -1,0 +1,1 @@
+A bug in GDAL's ISO 8211 reader makes AddressSanitizer report a 1-byte heap overflow read because it accepts a directory entry describing an implausibly short field and then unconditionally reads a larger fixed-size header from it, running one byte past the allocation.
